@@ -792,6 +792,12 @@ describe('mapStopReason / mapUsage', () => {
       .toMatchObject({ kind: 'error', failure: { code: 'QUOTA' } })
     expect(mapStopReason(assistant({
       stopReason: 'error',
+      errorMessage: '402: {"message":"This request would exceed your available credits given your '
+        + 'current in-flight requests. Retry after in-flight requests settle, or add credits.",'
+        + '"code":402,"metadata":{"reason":"in_flight_budget_exhausted"}}',
+    }))).toMatchObject({ kind: 'error', failure: { code: 'RATE_LIMIT' } })
+    expect(mapStopReason(assistant({
+      stopReason: 'error',
       errorMessage: 'OpenAI API error (429): You exceeded your current quota, please check your plan and billing details.',
     }))).toMatchObject({ kind: 'error', failure: { code: 'QUOTA' } })
     expect(mapStopReason(assistant({ stopReason: 'error', errorMessage: 'HTTP 500: backend down' })))

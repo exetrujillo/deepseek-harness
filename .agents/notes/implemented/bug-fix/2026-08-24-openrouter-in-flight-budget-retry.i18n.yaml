@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-24-openrouter-in-flight-budget-retry.md
+2026-08-24-openrouter-in-flight-budget-retry.md: c5350cad51ed354ffd24b6d2d1059d9c1f9690b0
+2026-08-24-openrouter-in-flight-budget-retry.zh.md: cbebfac09b33ff0986379d505a1ae0a88ea10be4
