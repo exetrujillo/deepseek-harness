@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-24-openrouter-in-flight-budget-retry.md
-2026-08-24-openrouter-in-flight-budget-retry.md: c5350cad51ed354ffd24b6d2d1059d9c1f9690b0
-2026-08-24-openrouter-in-flight-budget-retry.zh.md: cbebfac09b33ff0986379d505a1ae0a88ea10be4
+2026-08-24-openrouter-in-flight-budget-retry.md: 5ebff7b1c540f74852f113d3176c94b7436dff39
+2026-08-24-openrouter-in-flight-budget-retry.zh.md: a16f5764f2f287f153071d8d06e1bfa81daf2cbf

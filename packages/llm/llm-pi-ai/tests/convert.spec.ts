@@ -796,6 +796,13 @@ describe('mapStopReason / mapUsage', () => {
         + 'current in-flight requests. Retry after in-flight requests settle, or add credits.",'
         + '"code":402,"metadata":{"reason":"in_flight_budget_exhausted"}}',
     }))).toMatchObject({ kind: 'error', failure: { code: 'RATE_LIMIT' } })
+    // The in-flight marker is checked before the quota-exhaustion patterns, so
+    // a sibling phrasing that also matches "credits exhausted" still reads as
+    // the concurrency cap rather than a terminal balance error.
+    expect(mapStopReason(assistant({
+      stopReason: 'error',
+      errorMessage: '402: credits exhausted by in-flight requests, retry once they settle',
+    }))).toMatchObject({ kind: 'error', failure: { code: 'RATE_LIMIT' } })
     expect(mapStopReason(assistant({
       stopReason: 'error',
       errorMessage: 'OpenAI API error (429): You exceeded your current quota, please check your plan and billing details.',
@@ -828,6 +835,18 @@ describe('mapStopReason / mapUsage', () => {
       stopReason: 'error',
       errorMessage: 'vector length limit exceeded',
     }))).toMatchObject({ kind: 'error', failure: { code: 'PI_AI_ERROR' } })
+  })
+
+  it('extracts a provider Retry-After delay embedded in the flattened error text', () => {
+    expect(mapStopReason(assistant({
+      stopReason: 'error',
+      errorMessage: '402: {"message":"This request would exceed your available credits given your '
+        + 'current in-flight requests.","code":402,"metadata":{"reason":"in_flight_budget_exhausted",'
+        + '"headers":{"Retry-After":"120"}}}',
+    }))).toMatchObject({ kind: 'error', failure: { code: 'RATE_LIMIT', providerRetryAfterMs: 120_000 } })
+    const withoutRetryAfter = mapStopReason(assistant({ stopReason: 'error', errorMessage: 'HTTP 429: rate limit' }))
+    expect(withoutRetryAfter).toMatchObject({ kind: 'error', failure: { code: 'RATE_LIMIT' } })
+    expect(withoutRetryAfter).not.toHaveProperty('failure.providerRetryAfterMs')
   })
 
   it.each([

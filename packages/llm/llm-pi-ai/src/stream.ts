@@ -38,14 +38,16 @@ export function mapUsage(usage: PiUsage): TokenUsage {
 // us capture the cause ourselves), classify on `code`/`cause` instead of text.
 function classifyPiAiError(message: string): string {
   if (/\b(?:401|403)\b/.test(message)) return 'AUTH'
-  if (isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
-  if (/\b429\b|rate.?limit/i.test(message)) return 'RATE_LIMIT'
   // OpenRouter's per-account concurrent-spend cap (independent of balance and
   // the request's own max_tokens): the stable `in_flight_budget_exhausted`
   // reason and its "in-flight requests" prose both clear on their own once
   // earlier requests settle, so this is transient like a rate limit rather
-  // than an exhausted account.
+  // than an exhausted account. Checked before the quota-exhaustion patterns
+  // below so a sibling phrasing like "credits exhausted by in-flight
+  // requests" still reads as the concurrency cap, not a terminal balance error.
   if (/\bin_flight_budget_exhausted\b|\bin-flight requests\b/i.test(message)) return 'RATE_LIMIT'
+  if (isQuotaExceededError(message)) return QUOTA_EXCEEDED_CODE
+  if (/\b429\b|rate.?limit/i.test(message)) return 'RATE_LIMIT'
   // A rejected request body (gateway or provider size cap): resending the
   // same request cannot succeed, so it is invalid, not transient.
   if (/\b413\b|failed to buffer the request body:\s*length limit exceeded|payload too large|request body too large/i.test(message)) return 'INVALID_REQUEST'
@@ -70,6 +72,25 @@ function classifyPiAiError(message: string): string {
   return 'PI_AI_ERROR'
 }
 
+// pi-ai's flattening (see the XXX above) discards the response headers, but
+// some provider error bodies embed them as JSON text that survives into the
+// flattened `error.message` (e.g. OpenRouter's in-flight-budget 402:
+// `"headers":{"Retry-After":"120"}`). Recovering the value here turns a
+// policy-default backoff into the provider's exact requested cooldown.
+const RETRY_AFTER_PATTERN = /"retry-after"\s*:\s*"?(\d+)/i
+
+/**
+ * Extract a provider-issued Retry-After delay embedded in flattened pi-ai error text.
+ * @param message - flattened pi-ai error text.
+ * @returns the delay in milliseconds, or undefined when absent or non-positive.
+ */
+function extractProviderRetryAfterMs(message: string): number | undefined {
+  const match = RETRY_AFTER_PATTERN.exec(message)
+  if (match === null) return undefined
+  const seconds = Number(match[1])
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1_000 : undefined
+}
+
 /**
  * Map a terminal pi-ai event to the harness finish reason.
  * @param message - the assistant message carried by the `done` or `error` event.
@@ -77,7 +98,8 @@ function classifyPiAiError(message: string): string {
  * @returns the mapped harness reason. Recognized error text, `stop` usage above
  *   `contextWindow`, and zero-output `length` usage that fills the window map
  *   to `CONTEXT_WINDOW_EXCEEDED`; a `stop` with no content blocks maps to an
- *   `EMPTY_RESPONSE` error.
+ *   `EMPTY_RESPONSE` error. An `error` failure carries `providerRetryAfterMs`
+ *   when the flattened text embeds a `Retry-After` value.
  */
 export function mapStopReason(message: AssistantMessage, contextWindow?: number): FinishReason {
   const piAiOverflow = isContextOverflow(message, contextWindow)
@@ -116,7 +138,15 @@ export function mapStopReason(message: AssistantMessage, contextWindow?: number)
     }
     case 'error': {
       const text = message.errorMessage ?? 'pi-ai stream error'
-      return { kind: 'error', failure: { message: text, code: classifyPiAiError(text) } }
+      const providerRetryAfterMs = extractProviderRetryAfterMs(text)
+      return {
+        kind: 'error',
+        failure: {
+          message: text,
+          code: classifyPiAiError(text),
+          ...providerRetryAfterMs === undefined ? {} : { providerRetryAfterMs },
+        },
+      }
     }
   }
 }
